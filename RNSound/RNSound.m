@@ -66,6 +66,10 @@
   return [[self callbackPool] objectForKey:key];
 }
 
+-(BOOL)havePendingCallbacks {
+  return [[self callbackPool] count] != 0;
+}
+
 -(NSString *) getDirectory:(int)directory {
   return [NSSearchPathForDirectoriesInDomains(directory, NSUserDomainMask, YES) firstObject];
 }
@@ -80,6 +84,11 @@
     if (callback) {
       callback(@[@(flag)]);
       [[self callbackPool] removeObjectForKey:key];
+    }
+    if (![self havePendingCallbacks]) {
+      // No other pending callbacks, deactivate the session (it restores the normal volume of other apps playing music)
+	  AVAudioSession *session = [AVAudioSession sharedInstance];
+      [session setActive: NO error: nil];
     }
   }
 }
@@ -134,7 +143,7 @@ RCT_EXPORT_METHOD(setMode:(NSString *)modeName) {
 }
 
 RCT_EXPORT_METHOD(setCategory:(NSString *)categoryName
-    mixWithOthers:(BOOL)mixWithOthers) {
+                  mixWithOthers:(BOOL)mixWithOthers duckOthers:(BOOL)duckOthers) {
   AVAudioSession *session = [AVAudioSession sharedInstance];
   NSString *category = nil;
 
@@ -160,7 +169,11 @@ RCT_EXPORT_METHOD(setCategory:(NSString *)categoryName
 
   if (category) {
     if (mixWithOthers) {
-        [session setCategory: category withOptions:AVAudioSessionCategoryOptionMixWithOthers error: nil];
+      NSInteger options = AVAudioSessionCategoryOptionMixWithOthers;
+      if (duckOthers) {
+        options |= AVAudioSessionCategoryOptionDuckOthers | AVAudioSessionCategoryOptionInterruptSpokenAudioAndMixWithOthers;
+      }
+      [session setCategory: category withOptions:options error: nil];
     } else {
       [session setCategory: category error: nil];
     }

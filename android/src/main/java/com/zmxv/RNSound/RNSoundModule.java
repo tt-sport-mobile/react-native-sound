@@ -29,11 +29,14 @@ public class RNSoundModule extends ReactContextBaseJavaModule {
   ReactApplicationContext context;
   final static Object NULL = null;
   String category;
+  AudioManager audioManager = null;
+  Boolean duckOthers = false;
 
   public RNSoundModule(ReactApplicationContext context) {
     super(context);
     this.context = context;
     this.category = null;
+    audioManager = (AudioManager)context.getSystemService(Context.AUDIO_SERVICE);
   }
 
   @Override
@@ -181,12 +184,23 @@ public class RNSoundModule extends ReactContextBaseJavaModule {
     if (player.isPlaying()) {
       return;
     }
+    final AudioManager.OnAudioFocusChangeListener audioFocusListener = new AudioManager.OnAudioFocusChangeListener() {
+      @Override
+      public void onAudioFocusChange(int i) {
+        // no op
+      }
+    };
+
     player.setOnCompletionListener(new OnCompletionListener() {
       boolean callbackWasCalled = false;
 
       @Override
       public synchronized void onCompletion(MediaPlayer mp) {
         if (!mp.isLooping()) {
+          if (duckOthers) {
+            // Abandon audio focus
+            audioManager.abandonAudioFocus(audioFocusListener);
+          }
           if (callbackWasCalled) return;
           callbackWasCalled = true;
           try {
@@ -202,12 +216,21 @@ public class RNSoundModule extends ReactContextBaseJavaModule {
 
       @Override
       public synchronized boolean onError(MediaPlayer mp, int what, int extra) {
+        if (duckOthers) {
+          // Abandon audio focus
+          audioManager.abandonAudioFocus(audioFocusListener);
+        }
         if (callbackWasCalled) return true;
         callbackWasCalled = true;
         callback.invoke(false);
         return true;
       }
     });
+
+    if (duckOthers) {
+      // Request audio focus for playback
+      audioManager.requestAudioFocus(audioFocusListener, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK);
+    }
     player.start();
   }
 
@@ -324,8 +347,9 @@ public class RNSoundModule extends ReactContextBaseJavaModule {
   }
 
   @ReactMethod
-  public void setCategory(final String category, final Boolean mixWithOthers) {
+  public void setCategory(final String category, final Boolean mixWithOthers, final Boolean duckOthers) {
     this.category = category;
+    this.duckOthers = duckOthers;
   }
 
   @ReactMethod
